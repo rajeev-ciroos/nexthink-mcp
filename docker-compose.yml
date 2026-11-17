@@ -1,0 +1,36 @@
+# Runs the simulator and the MCP server together. Needs both repos checked out side by side:
+#   nexthink-simulator/   nexthink-mcp/
+# Copy .env.example to .env first (it is git-ignored). Both ports are published on localhost only.
+services:
+  simulator:
+    build: ../nexthink-simulator
+    environment:
+      SCENARIO: ${SCENARIO:-healthy_baseline}
+      SIM_CLIENT_ID: ${NEXTHINK_CLIENT_ID:?set NEXTHINK_CLIENT_ID in .env}
+      SIM_CLIENT_SECRET: ${NEXTHINK_CLIENT_SECRET:?set NEXTHINK_CLIENT_SECRET in .env}
+      SIM_SEED: ${SIM_SEED:-42}
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/healthz')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mcp:
+    build: .
+    depends_on:
+      simulator:
+        condition: service_healthy
+    environment:
+      NEXTHINK_BASE_URL: http://simulator:8080
+      NEXTHINK_CLIENT_ID: ${NEXTHINK_CLIENT_ID:?set NEXTHINK_CLIENT_ID in .env}
+      NEXTHINK_CLIENT_SECRET: ${NEXTHINK_CLIENT_SECRET:?set NEXTHINK_CLIENT_SECRET in .env}
+      NEXTHINK_MCP_AUTH_TOKEN: ${NEXTHINK_MCP_AUTH_TOKEN:?set NEXTHINK_MCP_AUTH_TOKEN in .env}
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
