@@ -79,6 +79,34 @@ NEXTHINK_MCP_AUTH_TOKEN=... .venv/bin/nexthink-mcp --transport http --host 0.0.0
 
 Put TLS in front (nginx, a load balancer) for anything beyond localhost: the bearer token travels in a header.
 
+### OpenShift
+
+The image runs under the default `restricted` SCC (random UID, read-only root filesystem, all capabilities dropped).
+TLS ends at the OpenShift Route, so the pod needs no certificate. Manifests are in `openshift/`.
+
+```bash
+oc new-project nexthink-mcp
+# build in-cluster from this repo (pushes to the internal registry as ImageStream nexthink-mcp)
+oc new-build --name nexthink-mcp --strategy docker --binary=false \
+  https://github.com/rajeev-ciroos/nexthink-mcp.git
+# optional, if Docker Hub is blocked: --build-arg BASE_IMAGE=registry.access.redhat.com/ubi9/python-312
+oc logs -f bc/nexthink-mcp
+
+oc create secret generic nexthink-mcp \
+  --from-literal=NEXTHINK_BASE_URL=https://<instance>.api.<region>.nexthink.cloud \
+  --from-literal=NEXTHINK_CLIENT_ID=<client id> \
+  --from-literal=NEXTHINK_CLIENT_SECRET=<client secret> \
+  --from-literal=NEXTHINK_MCP_AUTH_TOKEN="$(openssl rand -hex 32)"
+
+oc apply -f openshift/
+oc get route nexthink-mcp -o jsonpath='https://{.spec.host}/mcp{"\n"}'
+```
+
+Verified: the image builds on `python:3.13-slim` and on `ubi9/python-312`, and serves `/healthz` when run as UID
+1000650000 with `--read-only --cap-drop ALL`. Not verified on a real OpenShift cluster (the Deployment, Route and
+build commands were written to the OpenShift docs, not run). Egress through a corporate proxy: add `HTTPS_PROXY`
+(and `NO_PROXY`) as extra keys in the Secret.
+
 ### With the simulator (docker compose)
 
 Check out `nexthink-simulator` next to this repo, then:

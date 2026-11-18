@@ -1,0 +1,45 @@
+# Image comes from the ImageStream created by `oc new-build` (see README, "OpenShift"). The trigger
+# annotation swaps in the built image automatically. Settings come from the Secret `nexthink-mcp`.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexthink-mcp
+  annotations:
+    image.openshift.io/triggers: >-
+      [{"from":{"kind":"ImageStreamTag","name":"nexthink-mcp:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"mcp\")].image"}]
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: nexthink-mcp}
+  template:
+    metadata:
+      labels: {app: nexthink-mcp}
+    spec:
+      containers:
+        - name: mcp
+          image: nexthink-mcp:latest
+          ports:
+            - {name: http, containerPort: 8000}
+          envFrom:
+            - secretRef: {name: nexthink-mcp}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities: {drop: [ALL]}
+            seccompProfile: {type: RuntimeDefault}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}

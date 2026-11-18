@@ -1,0 +1,14 @@
+# TLS ends at the OpenShift router, so the pod serves plain HTTP on 8000 and needs no certificate.
+# To limit callers to Ciroos, add: haproxy.router.openshift.io/ip_whitelist: "<ciroos ip> <ciroos ip>"
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: nexthink-mcp
+  annotations:
+    haproxy.router.openshift.io/timeout: 300s
+spec:
+  to: {kind: Service, name: nexthink-mcp}
+  port: {targetPort: http}
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
