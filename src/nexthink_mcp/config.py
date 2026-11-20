@@ -13,6 +13,7 @@ class Settings:
     client_id: str | None = None
     client_secret: str | None = field(default=None, repr=False)
     mcp_auth_token: str | None = field(default=None, repr=False)
+    query_ids: dict[str, str] = field(default_factory=dict)  # saved-query ID overrides, NEXTHINK_QUERY_ID_<KEY>
 
     @property
     def missing(self) -> list[str]:
@@ -32,7 +33,10 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         env = os.environ.get
+        prefix = "NEXTHINK_QUERY_ID_"
+        query_ids = {k[len(prefix):].lower(): v.strip() for k, v in os.environ.items() if k.startswith(prefix) and v.strip()}
         return cls(
+            query_ids=query_ids,
             base_url=(env("NEXTHINK_BASE_URL") or "").rstrip("/") or None,
             client_id=env("NEXTHINK_CLIENT_ID") or None,
             client_secret=env("NEXTHINK_CLIENT_SECRET") or None,

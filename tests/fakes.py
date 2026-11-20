@@ -1,7 +1,10 @@
-"""A scripted fake Nexthink behind httpx.MockTransport: records requests, answers by query substring."""
+"""A scripted fake Nexthink behind httpx.MockTransport: records requests, answers by saved-query ID. Like a real tenant,
+it refuses requests without a queryId ("request.queryId: must not be blank")."""
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import json
 from typing import Callable
 
@@ -18,46 +21,65 @@ RESULTS_URL = "https://files.test/results/abc?sig=xyz"
 class FakeNexthink:
     def __init__(self):
         self.requests: list[httpx.Request] = []
-        self.rules: list[tuple[str, Callable[[str], list[dict]] | list[dict]]] = []
+        self.rules: list[tuple[str, Callable[[dict], list[dict]] | list[dict]]] = []
+        self.csv_results = False  # serve export results as CSV instead of JSON
         self.token_calls = 0
         self.export_rows: dict[str, list[dict]] = {}
         self.status_script: list[dict] = [{"status": "SUBMITTED"}, {"status": "IN_PROGRESS"}, {"status": "COMPLETED", "resultsFileUrl": RESULTS_URL}]
         self.fail_next: list[int] = []  # statuses to answer with before behaving
         self.revoke_token_once = False
+        self.token_status = 200  # answer the token request with this status
 
     def on(self, needle: str, rows):
         self.rules.append((needle, rows))
         return self
 
-    def queries(self) -> list[str]:
-        return [json.loads(r.content)["query"] for r in self.requests if r.url.path.endswith(("/execute", "/export"))]
+    def bodies(self) -> list[dict]:
+        return [json.loads(r.content) for r in self.requests if r.url.path.endswith(("/execute", "/export"))]
 
-    def _rows(self, query: str) -> list[dict]:
-        for needle, rows in self.rules:
-            if needle in query:
-                return rows(query) if callable(rows) else rows
+    def queries(self) -> list[str]:
+        """The saved-query IDs requested, in order."""
+        return [b.get("queryId") for b in self.bodies()]
+
+    def _rows(self, body: dict) -> list[dict]:
+        for query_id, rows in self.rules:
+            if query_id == body.get("queryId"):
+                return rows(body) if callable(rows) else rows
         return []
+
+    def _results(self, rows: list[dict]) -> httpx.Response:
+        if not self.csv_results:
+            return httpx.Response(200, json={"data": rows, "executionDateTime": "2026-11-17T12:00:00Z"})
+        out = io.StringIO()
+        writer = csv.DictWriter(out, fieldnames=list(rows[0]) if rows else [])
+        writer.writeheader()
+        writer.writerows(rows)
+        return httpx.Response(200, text=out.getvalue(), headers={"content-type": "text/csv"})
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         self.requests.append(req)
         path = req.url.path
         if path == "/api/v1/token":
             self.token_calls += 1
+            if self.token_status != 200:
+                return httpx.Response(self.token_status, json={"error": "invalid_request", "error_description": "token endpoint said no"})
             return httpx.Response(200, json={"access_token": f"tok-{self.token_calls}", "token_type": "Bearer", "expires_in": 3600})
         if req.url.host == "files.test":
-            return httpx.Response(200, json={"data": self.export_rows["abc"], "executionDateTime": "2026-11-17T12:00:00Z"})
+            return self._results(self.export_rows["abc"])
         if self.fail_next:
             return httpx.Response(self.fail_next.pop(0), headers={"Retry-After": "0"}, json={"code": "BUSY", "message": "busy"})
         if self.revoke_token_once and req.headers["authorization"] == "Bearer tok-1":
             self.revoke_token_once = False
             return httpx.Response(401, json={"code": "UNAUTHORIZED", "message": "expired"})
-        if path == "/api/v1/nql/execute":
-            q = json.loads(req.content)["query"]
-            rows = self._rows(q)
-            return httpx.Response(200, json={"executedQuery": q, "rows": len(rows), "data": rows, "executionDateTime": "2026-11-17T12:00:00Z"})
-        if path == "/api/v1/nql/export":
-            self.export_rows["abc"] = self._rows(json.loads(req.content)["query"])
-            return httpx.Response(200, json={"exportId": "abc"})
+        if path in ("/api/v1/nql/execute", "/api/v1/nql/export"):
+            body = json.loads(req.content)
+            if not body.get("queryId"):
+                return httpx.Response(400, json={"code": "INVALID_REQUEST", "message": "request.queryId: must not be blank"})
+            rows = self._rows(body)
+            if path.endswith("/export"):
+                self.export_rows["abc"] = rows
+                return httpx.Response(200, json={"exportId": "abc"})
+            return httpx.Response(200, json={"queryId": body["queryId"], "rows": len(rows), "data": rows, "executionDateTime": "2026-11-17T12:00:00Z"})
         if path == "/api/v1/nql/status/abc":
             step = self.status_script.pop(0) if len(self.status_script) > 1 else self.status_script[0]
             return httpx.Response(200, json=step)

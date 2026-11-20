@@ -18,7 +18,7 @@ INSTRUCTIONS = (
     "Read-only access to Nexthink digital employee experience data (no writes, no Remote Actions). "
     "list_devices / get_device give inventory with stable deviceId and userId; list_applications shows deployed versions; "
     "get_app_crashes explains crashes of one application; summarize_experience aggregates crashes and boot times by "
-    "site, app version, OS build, network type or day to localise a problem; run_nql_query is the escape hatch. "
+    "site, app version, OS build, network type or day to localise a problem; run_saved_query is the escape hatch for other saved queries. "
     "Data is near-real-time but a few minutes behind. Check `truncated` in every result. Run check_connection first if anything fails. "
     "All times are UTC."
 )

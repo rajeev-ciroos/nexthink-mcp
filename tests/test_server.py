@@ -34,6 +34,13 @@ def test_settings_from_env_only(monkeypatch):
     assert s.base_url == "https://nx.test" and not s.missing and "hunter2" not in repr(s)
 
 
+def test_query_id_overrides_come_from_env_only(monkeypatch):
+    monkeypatch.setenv("NEXTHINK_QUERY_ID_DEVICES", " #acme_devices ")
+    monkeypatch.setenv("NEXTHINK_QUERY_ID_DEVICE_APPS", "#acme_apps")
+    monkeypatch.setenv("NEXTHINK_QUERY_ID_BOOTS", "")
+    assert Settings.from_env().query_ids == {"devices": "#acme_devices", "device_apps": "#acme_apps"}
+
+
 def test_http_transport_refuses_to_start_without_a_token(monkeypatch):
     monkeypatch.delenv("NEXTHINK_MCP_AUTH_TOKEN", raising=False)
     monkeypatch.setattr("sys.argv", ["nexthink-mcp", "--transport", "http"])

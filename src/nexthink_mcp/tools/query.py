@@ -7,18 +7,18 @@ from .context import LATENCY, AppContext, bounded
 
 def register(mcp: FastMCP, ctx: AppContext) -> None:
     @mcp.tool(description=(
-        "Run a read-only NQL query (Nexthink Query Language) and return the rows. Use it for questions the other tools do "
-        "not cover; prefer them when they fit. Tables the other tools use: devices, installations, execution.crashes, "
-        "device_performance.boots. Add uid fields (e.g. uid, device.uid, user.uid) to the list/summarize so results carry "
-        "stable device and user IDs. "
-        "Limits: at most max_rows rows (default 100, max 500); a trailing '| limit N' above max_rows is lowered to max_rows. "
-        "When more rows exist, `truncated` is true and only the first max_rows are returned. Synchronous call: for bigger "
-        "extracts narrow the query instead. NQL cannot modify anything. " + LATENCY
+        "Run one saved Nexthink query by its ID (for example '#ciroos_devices') and return the rows. Nexthink only runs "
+        "saved queries that an administrator has created and enabled for API use, so this can reach only those; it cannot "
+        "run free-form NQL. Use it for a saved query the other tools do not cover; prefer them when they fit. Pass "
+        "`parameters` only if the saved query declares them. Read-only. "
+        "Limits: at most max_rows rows (default 100, max 500) and never more than the synchronous API limit; when more "
+        "rows exist `truncated` is true and only the first max_rows are returned. For big extracts use a query that "
+        "summarises. " + LATENCY
     ))
-    async def run_nql_query(query: str, max_rows: int = 100) -> dict:
+    async def run_saved_query(query_id: str, parameters: dict[str, str | int | float | bool] | None = None, max_rows: int = 100) -> dict:
         bounded("max_rows", max_rows, 1, 500)
-        res = await ctx.client.run_query(query, max_rows)
+        res = await ctx.client.run_saved_query(query_id, parameters, max_rows)
         return {
-            "executedQuery": res.executed_query, "executedAt": res.executed_at, "rowCount": len(res.rows),
+            "savedQueryId": res.query_id, "executedAt": res.executed_at, "rowCount": len(res.rows),
             "maxRows": max_rows, "truncated": res.truncated, "rows": res.rows,
         }

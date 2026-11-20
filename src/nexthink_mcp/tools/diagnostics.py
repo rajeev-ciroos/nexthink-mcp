@@ -8,8 +8,9 @@ from .context import LATENCY, AppContext
 
 def register(mcp: FastMCP, ctx: AppContext) -> None:
     @mcp.tool(description=(
-        "Verify configuration, authentication and NQL access (gets a token, runs a 1-row query). Run this first if other "
-        "tools fail. Never returns secrets. Read-only. Limits: 1 row. " + LATENCY
+        "Verify configuration, authentication and saved-query access (gets a token, runs the small saved query that counts devices "
+        "per site) and list the saved-query IDs the other tools use. Run this first if other tools fail; a failure names the "
+        "call that failed and what Nexthink answered. Never returns secrets. Read-only. Limits: one query, at most one row per site. " + LATENCY
     ))
     async def check_connection() -> dict:
         s = ctx.settings
